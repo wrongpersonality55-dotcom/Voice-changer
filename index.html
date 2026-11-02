@@ -2,119 +2,198 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voice Changer App</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Voice Changer</title>
+    <meta name="description" content="Change any voice: child, girl, woman, man, old and more.">
+    <meta name="theme-color" content="#0e0a22">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="icon-192.png" type="image/png">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Voice Changer">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg: #0e0a22;
+            --ink: #f7f3ff;
+            --muted: rgba(247, 243, 255, 0.62);
+            --pink: #ff7ac6;
+            --lilac: #a78bfa;
+            --mint: #5ef2d0;
+            --peach: #ffc58a;
+            --sky: #7cc5ff;
+            --glass: rgba(255, 255, 255, 0.08);
+            --glass-hi: rgba(255, 255, 255, 0.16);
+            --line: rgba(255, 255, 255, 0.2);
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { color-scheme: dark; }
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #121212;
-            color: #ffffff;
-            display: flex;
-            justify-content: center;
-            align-items: center;
             min-height: 100vh;
-            margin: 20px;
-            padding: 20px 0;
-            box-sizing: border-box;
-        }
-        .container {
-            background: #1e1e1e;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-            text-align: center;
+            min-height: 100dvh;
             display: grid;
-            grid-template-columns: repeat(1,1fr);
-            justify-content: center;
-            max-width: 400px;
-            box-shadow: 0 0 20px white;
+            place-items: center;
+            padding: max(20px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
+            font-family: "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+            color: var(--ink);
+            background: var(--bg);
+            overflow-x: hidden;
+        }
+
+        /* Soft pastel light behind the glass */
+        .blob { position: fixed; border-radius: 50%; filter: blur(80px); pointer-events: none; z-index: 0; animation: float 20s ease-in-out infinite alternate; }
+        .b1 { width: 420px; height: 420px; background: var(--pink);  top: -140px; left: -120px; opacity: .55; }
+        .b2 { width: 480px; height: 480px; background: var(--lilac); bottom: -180px; right: -140px; opacity: .55; animation-delay: -7s; }
+        .b3 { width: 300px; height: 300px; background: var(--mint);  top: 52%; left: 8%; opacity: .28; animation-delay: -12s; }
+        .b4 { width: 260px; height: 260px; background: var(--peach); top: 8%; right: 6%; opacity: .22; animation-delay: -4s; }
+        @keyframes float { to { transform: translate3d(50px, 36px, 0) scale(1.12); } }
+
+        .app {
+            position: relative;
+            z-index: 1;
             width: 100%;
+            max-width: 440px;
+            padding: 28px 22px 24px;
+            border-radius: 34px;
+            background: linear-gradient(160deg, rgba(255,255,255,.14), rgba(255,255,255,.05));
+            border: 1px solid var(--line);
+            backdrop-filter: blur(30px) saturate(150%);
+            -webkit-backdrop-filter: blur(30px) saturate(150%);
+            box-shadow: 0 30px 80px rgba(8, 4, 30, .6), inset 0 1px 0 rgba(255,255,255,.35), inset 0 -1px 0 rgba(255,255,255,.05);
         }
-        @media (max-width:600px) {
-             .container{
-                width: 90%;
-             }
-            
+
+        /* Header */
+        .head { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+        .head img { width: 56px; height: 56px; border-radius: 18px; box-shadow: 0 8px 24px rgba(167,139,250,.5); flex: none; }
+        .head h1 { font-family: "Fredoka", "Nunito", sans-serif; font-size: 1.7rem; font-weight: 600; line-height: 1.1; letter-spacing: .01em;
+            background: linear-gradient(100deg, #fff, #ffd3ee 55%, #cbbcff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+        .head p { color: var(--muted); font-size: .85rem; font-weight: 600; margin-top: 2px; }
+
+        /* Equalizer: wakes up while a voice is playing */
+        .eq { margin-left: auto; display: flex; align-items: center; gap: 3px; height: 28px; }
+        .eq i { display: block; width: 4px; height: 6px; border-radius: 4px; background: linear-gradient(var(--pink), var(--mint)); opacity: .55; transition: height .3s; }
+        .eq.playing i { opacity: 1; animation: bounce .9s ease-in-out infinite; }
+        .eq.playing i:nth-child(2) { animation-delay: -.7s; }
+        .eq.playing i:nth-child(3) { animation-delay: -.4s; }
+        .eq.playing i:nth-child(4) { animation-delay: -.55s; }
+        .eq.playing i:nth-child(5) { animation-delay: -.2s; }
+        @keyframes bounce { 0%,100% { height: 6px; } 50% { height: 26px; } }
+
+        /* Upload */
+        .drop { position: relative; display: flex; align-items: center; gap: 14px; padding: 16px 18px; margin-bottom: 18px; cursor: pointer;
+            border-radius: 22px; border: 1.5px dashed rgba(255,255,255,.32); background: var(--glass); transition: transform .25s, border-color .25s, background .25s, box-shadow .25s; }
+        .drop:hover { transform: translateY(-2px); border-color: var(--pink); background: var(--glass-hi); box-shadow: 0 10px 30px rgba(255,122,198,.2); }
+        .drop:focus-within { outline: 2px solid var(--mint); outline-offset: 3px; }
+        .drop input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+        .drop .ico { flex: none; width: 46px; height: 46px; border-radius: 15px; display: grid; place-items: center; font-size: 1.4rem;
+            background: linear-gradient(135deg, var(--pink), var(--lilac)); box-shadow: 0 6px 18px rgba(255,122,198,.4); }
+        .drop .t { min-width: 0; }
+        .drop b { display: block; font-weight: 800; font-size: .98rem; }
+        .drop span.s { display: block; color: var(--muted); font-size: .8rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .drop.has-file { border-style: solid; border-color: rgba(94,242,208,.7); }
+        .drop.has-file .ico { background: linear-gradient(135deg, var(--mint), var(--sky)); box-shadow: 0 6px 18px rgba(94,242,208,.4); }
+
+        /* Voice tiles */
+        #voiceButtons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+        .voice { --c: var(--pink); position: relative; display: grid; justify-items: start; gap: 1px; padding: 14px 14px 12px; text-align: left; cursor: pointer;
+            font-family: inherit; color: var(--ink); border-radius: 22px; border: 1px solid var(--line); background: var(--glass);
+            transition: transform .25s cubic-bezier(.2,.9,.3,1.3), background .25s, box-shadow .3s, border-color .25s; }
+        .voice:nth-child(2) { --c: var(--lilac); } .voice:nth-child(3) { --c: var(--peach); } .voice:nth-child(4) { --c: var(--sky); }
+        .voice:nth-child(5) { --c: var(--mint); } .voice:nth-child(6) { --c: var(--lilac); } .voice:nth-child(7) { --c: var(--pink); }
+        .voice:last-child:nth-child(odd) { grid-column: 1 / -1; justify-items: center; text-align: center; }
+        .voice .emo { font-size: 1.9rem; line-height: 1; margin-bottom: 6px; transition: transform .3s cubic-bezier(.2,.9,.3,1.6); }
+        .voice .nm { font-weight: 800; font-size: .98rem; }
+        .voice .sub { color: var(--muted); font-size: .78rem; font-weight: 600; }
+        .voice:hover { transform: translateY(-4px); border-color: var(--c); background: var(--glass-hi); box-shadow: 0 12px 30px color-mix(in srgb, var(--c) 40%, transparent); }
+        .voice:hover .emo { transform: scale(1.18) rotate(-6deg); }
+        .voice:active { transform: scale(.97); }
+        .voice:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+        .voice.active { border-color: transparent; background: linear-gradient(135deg, color-mix(in srgb, var(--c) 80%, #fff 0%), color-mix(in srgb, var(--c) 45%, var(--lilac))); color: #1a0f38;
+            box-shadow: 0 14px 36px color-mix(in srgb, var(--c) 55%, transparent), inset 0 1px 0 rgba(255,255,255,.5); }
+        .voice.active .sub { color: rgba(26,15,56,.7); }
+
+        /* Action buttons */
+        .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .act { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 10px; cursor: pointer; font: 800 .95rem "Nunito", sans-serif;
+            border-radius: 18px; border: 1px solid var(--line); color: var(--ink); position: relative; overflow: hidden;
+            transition: transform .25s cubic-bezier(.2,.9,.3,1.3), box-shadow .3s, filter .3s, opacity .3s; }
+        .act::after { content: ""; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,.4) 50%, transparent 70%); transform: translateX(-120%); transition: transform .7s; }
+        .act:hover:not(:disabled)::after { transform: translateX(120%); }
+        .act:hover:not(:disabled) { transform: translateY(-3px); }
+        .act:active:not(:disabled) { transform: scale(.97); }
+        .act:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+        #btnStop { background: rgba(255, 110, 150, .22); border-color: rgba(255,110,150,.5); }
+        #btnStop:hover { box-shadow: 0 10px 28px rgba(255,110,150,.4); }
+        #btnDownload { background: linear-gradient(135deg, var(--mint), var(--sky)); color: #0b2a33; border-color: transparent; box-shadow: 0 10px 26px rgba(94,242,208,.3); }
+        #btnDownload:hover:not(:disabled) { box-shadow: 0 14px 36px rgba(94,242,208,.55); }
+        .act:disabled { opacity: .4; cursor: not-allowed; }
+
+        /* Status */
+        .status { margin: 16px auto 0; width: fit-content; max-width: 100%; padding: 8px 16px; border-radius: 999px; text-align: center;
+            background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12); color: var(--muted); font-size: .84rem; font-weight: 700; }
+
+        /* Install */
+        .install { display: block; margin: 14px auto 0; padding: 11px 26px; cursor: pointer; font: 800 .9rem "Nunito", sans-serif; color: var(--ink);
+            border-radius: 999px; border: 1px solid var(--line); background: linear-gradient(135deg, rgba(255,122,198,.35), rgba(167,139,250,.35));
+            transition: transform .25s, box-shadow .3s; }
+        .install:hover { transform: translateY(-3px); box-shadow: 0 10px 30px rgba(255,122,198,.45); }
+        .install:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+        .install[hidden], .ios-tip[hidden] { display: none; }
+        .ios-tip { margin-top: 12px; text-align: center; color: var(--muted); font-size: .8rem; font-weight: 600; }
+
+        @media (max-width: 360px) {
+            .app { padding: 22px 16px 20px; border-radius: 28px; }
+            .head h1 { font-size: 1.45rem; }
+            .eq { display: none; }
         }
-       
-        h1 {
-            margin-bottom: 25px;
-            font-size: 24px;
-            color: #00adb5;
-            border-bottom: 2px solid white;
-            justify-self: center;
-        }
-        .controls {
-            margin-bottom: 20px;
-        }
-        input[type="file"] {
-            margin-bottom: 20px;
-            color: #ccc;
-        }
-        #audioUpload{
-            width: 200px;
-            height: 40px;
-            padding: 10px;
-        }
-        button {
-            background: #393e46;
-            color: #eee;
-            border: none;
-            padding: 12px 20px;
-            margin: 8px;
-            font-size: 16px;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            width: 85%;
-        }
-        button:hover {
-            background: #00adb5;
-            color: #fff;
-            transform: scale(1.03);
-        }
-        button.active {
-            background: #00adb5;
-            color: #fff;
-        }
-        button:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-            transform: none;
-        }
-        button:disabled:hover {
-            background: #393e46;
-            color: #eee;
-        }
-        #btnStop { background: #d9534f; }
-        #btnStop:hover { background: #e4605b; }
-        #btnDownload { background: #2e7d32; }
-        #btnDownload:hover { background: #3a9a3f; }
-        #btnDownload:disabled:hover { background: #2e7d32; }
-        .status {
-            margin-top: 15px;
-            font-size: 14px;
-            color: #888;
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation: none !important; transition-duration: .01ms !important; }
         }
     </style>
 </head>
 <body>
+    <div class="blob b1" aria-hidden="true"></div>
+    <div class="blob b2" aria-hidden="true"></div>
+    <div class="blob b3" aria-hidden="true"></div>
+    <div class="blob b4" aria-hidden="true"></div>
 
-<div class="container">
-    <h1>Voice Changer Effect</h1>
+    <main class="app">
+        <header class="head">
+            <img src="icon-192.png" alt="" width="56" height="56">
+            <div>
+                <h1>Voice Changer</h1>
+                <p>Apni awaz badlein</p>
+            </div>
+            <div class="eq" id="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+        </header>
 
-    <div class="controls">
-        <input type="file" id="audioUpload" accept="audio/*"><br>
+        <label class="drop" id="dropzone">
+            <span class="ico" aria-hidden="true">🎙️</span>
+            <span class="t">
+                <b>Audio file chunein</b>
+                <span class="s" id="fileName">MP3, WAV, M4A...</span>
+            </span>
+            <input type="file" id="audioUpload" accept="audio/*" aria-label="Audio file chunein">
+        </label>
 
         <!-- Voice buttons yahan JavaScript se ban jayenge -->
         <div id="voiceButtons"></div>
 
-        <button id="btnStop">⏹️ Stop Playback</button>
-        <button id="btnDownload" disabled>⬇️ Download Voice</button>
-    </div>
+        <div class="row">
+            <button class="act" id="btnStop" type="button">⏹️ Stop</button>
+            <button class="act" id="btnDownload" type="button" disabled>⬇️ Download</button>
+        </div>
 
-    <div class="status" id="statusText">Koi audio file select karein...</div>
-</div>
+        <div class="status" id="statusText" role="status" aria-live="polite">Koi audio file select karein...</div>
+
+        <button class="install" id="installBtn" type="button" hidden>📲 Install App</button>
+        <p class="ios-tip" id="iosTip" hidden>iPhone: Share dabayein, phir "Add to Home Screen".</p>
+    </main>
 
 <script>
     /*
@@ -144,6 +223,10 @@
     let busy = false;
 
     const audioUpload = document.getElementById('audioUpload');
+    const fileName = document.getElementById('fileName');
+    const dropzone = document.getElementById('dropzone');
+    const eq = document.getElementById('eq');
+    const setPlaying = (on) => eq.classList.toggle('playing', on);
     const statusText = document.getElementById('statusText');
     const btnDownload = document.getElementById('btnDownload');
     const voiceButtons = document.getElementById('voiceButtons');
@@ -276,6 +359,8 @@
     audioUpload.addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (!file) return;
+        fileName.textContent = file.name;
+        dropzone.classList.add('has-file');
 
         statusText.innerText = "Audio file load ho rahi hai...";
         btnDownload.disabled = true;
@@ -317,7 +402,10 @@
             const processed = await getProcessed(voice);
 
             currentSource = buildChain(audioCtx, processed, voice.filter);
+            const src = currentSource;
+            src.onended = () => { if (currentSource === src) { currentSource = null; setPlaying(false); } };
             currentSource.start(0);
+            setPlaying(true);
 
             lastVoice = voice;
             btnDownload.disabled = false;
@@ -332,6 +420,7 @@
     }
 
     function stopAudio() {
+        setPlaying(false);
         if (currentSource) {
             try {
                 currentSource.stop();
@@ -344,7 +433,10 @@
 
     VOICES.forEach(voice => {
         const btn = document.createElement('button');
-        btn.textContent = voice.label;
+        const m = voice.label.match(/^(\S+)\s+(.+?)\s*\((.+)\)$/);
+        const emo = m ? m[1] : '🎤', nm = m ? m[2] : voice.label, sub = m ? m[3] : '';
+        btn.className = 'voice';
+        btn.innerHTML = '<span class="emo">' + emo + '</span><span class="nm">' + nm + '</span><span class="sub">' + sub + '</span>';
         btn.addEventListener('click', () => playVoice(voice, btn));
         voiceButtons.appendChild(btn);
     });
@@ -438,7 +530,43 @@
     }
 
     btnDownload.addEventListener('click', downloadAudio);
-</script>
 
+    // =====================================================
+    //   INSTALL AS APP (PWA)
+    // =====================================================
+    const installBtn = document.getElementById('installBtn');
+    const iosTip = document.getElementById('iosTip');
+    let installEvent = null;
+
+    if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+        window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+    }
+
+    const isStandalone = () =>
+        window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        installEvent = e;
+        if (!isStandalone()) installBtn.hidden = false;
+    });
+
+    installBtn.addEventListener('click', async () => {
+        if (!installEvent) return;
+        installEvent.prompt();
+        await installEvent.userChoice;
+        installEvent = null;
+        installBtn.hidden = true;
+    });
+
+    window.addEventListener('appinstalled', () => {
+        installBtn.hidden = true;
+        statusText.innerText = 'App install ho gayi! 🎉';
+    });
+
+    // iPhone/iPad Safari: manual steps
+    if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !isStandalone()) iosTip.hidden = false;
+
+</script>
 </body>
 </html>
