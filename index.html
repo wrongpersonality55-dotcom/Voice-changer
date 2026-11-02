@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Changer App</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #121212;
+            color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 20px;
+            padding: 20px 0;
+            box-sizing: border-box;
+        }
+        .container {
+            background: #1e1e1e;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            text-align: center;
+            display: grid;
+            grid-template-columns: repeat(1,1fr);
+            justify-content: center;
+            max-width: 400px;
+            box-shadow: 0 0 20px white;
+            width: 100%;
+        }
+        @media (max-width:600px) {
+             .container{
+                width: 90%;
+             }
+            
+        }
+       
+        h1 {
+            margin-bottom: 25px;
+            font-size: 24px;
+            color: #00adb5;
+            border-bottom: 2px solid white;
+            justify-self: center;
+        }
+        .controls {
+            margin-bottom: 20px;
+        }
+        input[type="file"] {
+            margin-bottom: 20px;
+            color: #ccc;
+        }
+        #audioUpload{
+            width: 200px;
+            height: 40px;
+            padding: 10px;
+        }
+        button {
+            background: #393e46;
+            color: #eee;
+            border: none;
+            padding: 12px 20px;
+            margin: 8px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 85%;
+        }
+        button:hover {
+            background: #00adb5;
+            color: #fff;
+            transform: scale(1.03);
+        }
+        button.active {
+            background: #00adb5;
+            color: #fff;
+        }
+        button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+        }
+        button:disabled:hover {
+            background: #393e46;
+            color: #eee;
+        }
+        #btnStop { background: #d9534f; }
+        #btnStop:hover { background: #e4605b; }
+        #btnDownload { background: #2e7d32; }
+        #btnDownload:hover { background: #3a9a3f; }
+        #btnDownload:disabled:hover { background: #2e7d32; }
+        .status {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Voice Changer Effect</h1>
+
+    <div class="controls">
+        <input type="file" id="audioUpload" accept="audio/*"><br>
+
+        <!-- Voice buttons yahan JavaScript se ban jayenge -->
+        <div id="voiceButtons"></div>
+
+        <button id="btnStop">⏹️ Stop Playback</button>
+        <button id="btnDownload" disabled>⬇️ Download Voice</button>
+    </div>
+
+    <div class="status" id="statusText">Koi audio file select karein...</div>
+</div>
+
+<script>
+    /*
+       ===== VOICE LIST =====
+       Nayi voice add karni ho to bas yahan ek line add kar dein.
+       pitch  : 1.0 = original awaz. Zyada = barik awaz, kam = bhaari awaz.
+                (Speed same rehti hai, sirf pitch badalti hai)
+       filter : (optional) awaz ka tone badalne ke liye
+                "lowpass"   = awaz thodi dabi hui / bhaari
+                "highshelf" = awaz thodi chamakdar / saaf
+    */
+    const VOICES = [
+        { id: "child",  label: "👶 Child (Bacha)",  pitch: 1.80 },
+        { id: "girl",   label: "👧 Girl (Ladki)",   pitch: 1.50, filter: { type: "highshelf", freq: 3000, gain: 4 } },
+        { id: "female", label: "👩 Woman (Aurat)",  pitch: 1.30 },
+        { id: "boy",    label: "👦 Boy (Ladka)",    pitch: 1.18, filter: { type: "highshelf", freq: 3000, gain: 2 } },
+        { id: "young",  label: "🧑 Young (Jawan)",  pitch: 1.07 },
+        { id: "male",   label: "👨 Man (Mard)",     pitch: 0.80 },
+        { id: "old",    label: "👴 Old (Buzurg)",   pitch: 0.72, filter: { type: "lowpass", freq: 2500, gain: 0 } }
+    ];
+
+    let audioCtx = null;
+    let audioBuffer = null;
+    let currentSource = null;
+    let lastVoice = null;       // aakhri select ki hui voice (download ke liye)
+    let processedCache = {};    // har voice ka bana hua audio yahan save hota hai
+    let busy = false;
+
+    const audioUpload = document.getElementById('audioUpload');
+    const statusText = document.getElementById('statusText');
+    const btnDownload = document.getElementById('btnDownload');
+    const voiceButtons = document.getElementById('voiceButtons');
+
+    // =====================================================
+    //   PITCH SHIFT ENGINE (bina kisi library ke, offline)
+    //   Tareeqa: pehle audio ko time-stretch karte hain (WSOLA),
+    //   phir resample karte hain. Is se pitch badalti hai
+    //   lekin speed/duration same rehti hai.
+    // =====================================================
+
+    // Time-stretch: pitch same, duration x alpha
+    function timeStretch(input, alpha, sr) {
+        const win = 2 * Math.round(0.023 * sr);   // ~2048 samples @44.1kHz
+        const Hs = win / 2;                       // output hop
+        const Ha = Hs / alpha;                    // input hop
+        const tol = Math.round(win / 4);          // search range
+        const corrLen = win / 2;
+        const outLen = Math.ceil(input.length * alpha);
+
+        const out = new Float32Array(outLen + win);
+        const norm = new Float32Array(outLen + win);
+
+        // Hann window
+        const w = new Float32Array(win);
+        for (let i = 0; i < win; i++) {
+            w[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / win);
+        }
+
+        let prevPos = 0;
+        for (let k = 0; ; k++) {
+            const outPos = k * Hs;
+            if (outPos >= outLen) break;
+
+            const nominal = Math.round(k * Ha);
+            let best = nominal;
+
+            if (k > 0) {
+                // Pichle frame ka natural agla hissa dhoondein
+                const targetStart = prevPos + Hs;
+                if (targetStart + corrLen < input.length) {
+                    let bestScore = -Infinity;
+                    for (let d = -tol; d <= tol; d += 2) {
+                        const cand = nominal + d;
+                        if (cand < 0 || cand + corrLen >= input.length) continue;
+                        let s = 0;
+                        for (let i = 0; i < corrLen; i += 8) {
+                            s += input[cand + i] * input[targetStart + i];
+                        }
+                        if (s > bestScore) { bestScore = s; best = cand; }
+                    }
+                }
+            }
+
+            for (let i = 0; i < win; i++) {
+                const idx = best + i;
+                const v = idx < input.length ? input[idx] : 0;
+                out[outPos + i] += v * w[i];
+                norm[outPos + i] += w[i];
+            }
+            prevPos = best;
+        }
+
+        for (let i = 0; i < outLen; i++) {
+            if (norm[i] > 1e-3) out[i] /= norm[i];
+        }
+        return out.subarray(0, outLen);
+    }
+
+    // Resample (linear): pitch x r, duration / r
+    function resample(input, r) {
+        const outLen = Math.floor((input.length - 1) / r);
+        const out = new Float32Array(outLen);
+        for (let i = 0; i < outLen; i++) {
+            const pos = i * r;
+            const i0 = Math.floor(pos);
+            const frac = pos - i0;
+            out[i] = input[i0] * (1 - frac) + input[i0 + 1] * frac;
+        }
+        return out;
+    }
+
+    // Poori AudioBuffer ki pitch badalna (duration same rehti hai)
+    function pitchShiftBuffer(buffer, pitch) {
+        const sr = buffer.sampleRate;
+        const results = [];
+        for (let c = 0; c < buffer.numberOfChannels; c++) {
+            const data = buffer.getChannelData(c);
+            const stretched = timeStretch(data, pitch, sr);
+            results.push(resample(stretched, pitch));
+        }
+        const len = Math.min(...results.map(r => r.length));
+        const newBuf = audioCtx.createBuffer(buffer.numberOfChannels, len, sr);
+        results.forEach((r, c) => newBuf.getChannelData(c).set(r.subarray(0, len)));
+        return newBuf;
+    }
+
+    // Voice ka tayyar audio (pehli baar banta hai, phir cache se milta hai)
+    async function getProcessed(voice) {
+        if (processedCache[voice.id]) return processedCache[voice.id];
+        statusText.innerText = "Voice ban rahi hai, thora intezar karein...";
+        // UI ko text dikhane ka mauqa dein
+        await new Promise(res => setTimeout(res, 40));
+        const buf = pitchShiftBuffer(audioBuffer, voice.pitch);
+        processedCache[voice.id] = buf;
+        return buf;
+    }
+
+    // Tone filter ke saath audio chain banana
+    function buildChain(ctx, buffer, filter) {
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        let last = source;
+        if (filter) {
+            const f = ctx.createBiquadFilter();
+            f.type = filter.type;
+            f.frequency.value = filter.freq;
+            f.gain.value = filter.gain;
+            last.connect(f);
+            last = f;
+        }
+        last.connect(ctx.destination);
+        return source;
+    }
+
+    // =====================================================
+    //   FILE LOAD / PLAY / STOP
+    // =====================================================
+
+    audioUpload.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        statusText.innerText = "Audio file load ho rahi hai...";
+        btnDownload.disabled = true;
+        lastVoice = null;
+        processedCache = {};
+        stopAudio();
+        clearActive();
+
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            audioCtx.decodeAudioData(event.target.result, function(buffer) {
+                audioBuffer = buffer;
+                statusText.innerText = "File tayyar hai! Niche diye gaye buttons dabaein.";
+            }, function(err) {
+                statusText.innerText = "Error: Audio file decoding fail ho gayi.";
+                console.error(err);
+            });
+        };
+        reader.readAsArrayBuffer(file);
+    });
+
+    function clearActive() {
+        voiceButtons.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    }
+
+    async function playVoice(voice, btn) {
+        if (!audioBuffer) {
+            alert("Pehle koi audio file upload karein!");
+            return;
+        }
+        if (busy) return;
+        busy = true;
+        stopAudio();
+
+        try {
+            if (audioCtx.state === "suspended") await audioCtx.resume();
+            const processed = await getProcessed(voice);
+
+            currentSource = buildChain(audioCtx, processed, voice.filter);
+            currentSource.start(0);
+
+            lastVoice = voice;
+            btnDownload.disabled = false;
+            clearActive();
+            btn.classList.add('active');
+            statusText.innerText = "Playing: " + voice.label;
+        } catch (err) {
+            console.error(err);
+            statusText.innerText = "Error: Voice effect nahi ban saka.";
+        }
+        busy = false;
+    }
+
+    function stopAudio() {
+        if (currentSource) {
+            try {
+                currentSource.stop();
+            } catch(e) {
+                // Audio already stopped
+            }
+            currentSource = null;
+        }
+    }
+
+    VOICES.forEach(voice => {
+        const btn = document.createElement('button');
+        btn.textContent = voice.label;
+        btn.addEventListener('click', () => playVoice(voice, btn));
+        voiceButtons.appendChild(btn);
+    });
+
+    document.getElementById('btnStop').addEventListener('click', stopAudio);
+
+    // =====================================================
+    //   DOWNLOAD
+    // =====================================================
+
+    function bufferToWav(buffer) {
+        const numCh = buffer.numberOfChannels;
+        const sampleRate = buffer.sampleRate;
+        const length = buffer.length * numCh * 2 + 44;
+        const arrayBuffer = new ArrayBuffer(length);
+        const view = new DataView(arrayBuffer);
+
+        function writeString(offset, str) {
+            for (let i = 0; i < str.length; i++) {
+                view.setUint8(offset + i, str.charCodeAt(i));
+            }
+        }
+
+        writeString(0, 'RIFF');
+        view.setUint32(4, length - 8, true);
+        writeString(8, 'WAVE');
+        writeString(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, numCh, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * numCh * 2, true);
+        view.setUint16(32, numCh * 2, true);
+        view.setUint16(34, 16, true);
+        writeString(36, 'data');
+        view.setUint32(40, buffer.length * numCh * 2, true);
+
+        const channels = [];
+        for (let c = 0; c < numCh; c++) channels.push(buffer.getChannelData(c));
+
+        let offset = 44;
+        for (let i = 0; i < buffer.length; i++) {
+            for (let c = 0; c < numCh; c++) {
+                let s = Math.max(-1, Math.min(1, channels[c][i]));
+                view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+                offset += 2;
+            }
+        }
+        return new Blob([arrayBuffer], { type: 'audio/wav' });
+    }
+
+    async function downloadAudio() {
+        if (!audioBuffer || !lastVoice) {
+            alert("Pehle koi voice effect select karein!");
+            return;
+        }
+
+        btnDownload.disabled = true;
+        statusText.innerText = "Voice tayyar ho rahi hai, intezar karein...";
+
+        try {
+            const processed = await getProcessed(lastVoice);
+
+            const offlineCtx = new OfflineAudioContext(
+                processed.numberOfChannels,
+                processed.length,
+                processed.sampleRate
+            );
+            const source = buildChain(offlineCtx, processed, lastVoice.filter);
+            source.start(0);
+
+            const rendered = await offlineCtx.startRendering();
+            const wavBlob = bufferToWav(rendered);
+
+            const url = URL.createObjectURL(wavBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = "voice_" + lastVoice.id + ".wav";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+            statusText.innerText = "Download ho gayi! ✅";
+        } catch (err) {
+            console.error(err);
+            statusText.innerText = "Error: Download fail ho gaya.";
+        }
+
+        btnDownload.disabled = false;
+    }
+
+    btnDownload.addEventListener('click', downloadAudio);
+</script>
+
+</body>
+</html>
